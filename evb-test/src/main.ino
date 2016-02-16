@@ -18,10 +18,12 @@
     HC-SR501 IR PIR Motion Sensor
     DHT22/AM2302 Digital Temperature And Humidity Sensor
     BH1750FVI Light Sensor
+    Adafruit TSL2561 Digital Luminosity/Lux/Light Sensor
 */
 
 #include <Arduino.h>
 #include <ArduinoOTA.h>
+#include <Adafruit_TSL2561_U.h>
 #include <Wire.h>
 #include <BH1750.h>
 #include <DHT.h>
@@ -68,7 +70,8 @@ unsigned long dht_read_interval = (1000UL * 60 * 1);
 DHT dht(PIN_DHT, DHT_TYPE, 28);
 
 // lightsensor
-BH1750 light;
+BH1750 lightBH1750;
+Adafruit_TSL2561_Unified lightTSL2561 = Adafruit_TSL2561_Unified(TSL2561_ADDR_FLOAT, 12345);
 unsigned long light_last_read = 0;
 unsigned long light_read_interval = (1000UL * 60 * 1);
 
@@ -263,7 +266,10 @@ void initDHT()
 
 void initLIGHT()
 {
-  light.begin();
+  lightBH1750.begin();
+  lightTSL2561.begin();
+  lightTSL2561.enableAutoRange(true);
+  lightTSL2561.setIntegrationTime(TSL2561_INTEGRATIONTIME_13MS);
 }
 
 void handleOTA()
@@ -340,8 +346,14 @@ void handleLIGHT()
   if ((millis() - light_last_read) > light_read_interval)
   {
     light_last_read = millis();
-    uint16_t lux = light.readLightLevel();
-    mqtt_client.publish(mqtt_out, String("light/" + (String)lux).c_str());
+
+    uint16_t lux = lightBH1750.readLightLevel();
+    mqtt_client.publish(mqtt_out, String("lightBH1750/" + (String)lux).c_str());
+
+    sensors_event_t event;
+    lightTSL2561.getEvent(&event);
+    if (event.light)
+      mqtt_client.publish(mqtt_out, String("lightTSL2561/" + (String)event.light).c_str());
   }
 }
 
