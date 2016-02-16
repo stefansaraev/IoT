@@ -53,11 +53,11 @@ volatile int btn_state = EV_NONE;
 
 // relay
 const int PIN_RELAY = 5;
-bool relay_publish_mqtt = false;
+volatile bool relay_publish_mqtt = false;
 
 // pir
 const int PIN_PIR = 13;
-bool pir_publish_mqtt = false;
+volatile bool pir_publish_mqtt = false;
 bool pir_armed = false;
 
 // dht
