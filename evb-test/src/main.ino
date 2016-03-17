@@ -31,6 +31,7 @@
 #include <ESP8266mDNS.h>
 #include <FS.h>
 #include <PubSubClient.h>
+#include <LiquidCrystal_I2C.h>
 
 // mqtt
 const char* mqtt_out = "/test/evb/in";
@@ -78,6 +79,8 @@ unsigned long light_read_interval = (1000UL * 60 * 1);
 // i2c
 static int PIN_SDA = 2;
 static int PIN_SCL = 4;
+
+LiquidCrystal_I2C lcd(0x27,16,2);
 
 String ipaddr2str(IPAddress addr)
 {
@@ -135,6 +138,15 @@ void mqtt_connect()
   }
 }
 
+void lcd_print(String line1, String line2)
+{
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print(line1);
+  lcd.setCursor(0, 1);
+  lcd.print(line2);
+}
+
 void publishPIN(int PIN)
 {
   String pin_str;
@@ -179,6 +191,12 @@ void checkPIRChange()
   pir_publish_mqtt = true;
 }
 
+void initLCD()
+{
+  lcd.init();
+  lcd.backlight();
+  lcd_print("Starting up ...", "");
+}
 void initSPIFFS()
 {
   if (!SPIFFS.begin())
@@ -203,6 +221,8 @@ void initWifi()
   }
 
   Serial.print("WIFI: Connecting to: " + ssid + " ...");
+  lcd_print("Connecting ...", ssid);
+
   WiFi.begin(ssid.c_str(), pass.c_str());
   while (WiFi.status() != WL_CONNECTED)
   {
@@ -211,6 +231,7 @@ void initWifi()
   }
   Serial.println("");
   Serial.println("WIFI: Connected. IP address: " + ipaddr2str(WiFi.localIP()));
+  lcd_print("Connected.", "IP: " + ipaddr2str(WiFi.localIP()));
 }
 
 void initOTA()
@@ -369,6 +390,7 @@ void setup()
   attachInterrupt(digitalPinToInterrupt(PIN_BUTTON), checkBUTTONChange, CHANGE);
   attachInterrupt(digitalPinToInterrupt(PIN_RELAY), checkRELAYChange, CHANGE);
   attachInterrupt(digitalPinToInterrupt(PIN_PIR), checkPIRChange, CHANGE);
+  initLCD();
   initSPIFFS();
   initWifi();
   initOTA();
