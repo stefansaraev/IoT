@@ -75,90 +75,94 @@ void setup()
   Serial.print("Ada\n");
   startTime = micros();
   lastByteTime = lastAckTime = millis();
+
+  for(;;)
+  {
+    // Implementation is a simple finite-state machine.
+    // Regardless of mode, check for serial input each time:
+    currentTime = millis();
+    if ((bytesBuffered < 256) && ((c = Serial.read()) >= 0))
+    {
+      buffer[indexIn++] = c;
+      bytesBuffered++;
+      // Reset timeout counters
+      lastByteTime = lastAckTime = currentTime;
+    }
+    else
+    {
+      // No data received. If this persists, send an ACK packet
+      // to host once every second to alert it to our presence.
+      if ((currentTime - lastAckTime) > 1000)
+      {
+        // Send ACK to host and Reset counter
+        Serial.print("Ada\n");
+        lastAckTime = currentTime;
+      }
+      // If no data received for an extended time, turn off all LEDs.
+      if ((currentTime - lastByteTime) > SERIAL_TIMEOUT)
+      {
+        memset(leds, 0, NUM_LEDS * sizeof(struct CRGB));
+        FastLED.show();
+        lastByteTime = currentTime;
+      }
+    }
+
+    switch (mode)
+    {
+      case MODE_HEADER:
+        // In header-seeking mode. Is there enough data to check?
+        if (bytesBuffered >= HEADERSIZE)
+        {
+          // Indeed. Check for a 'magic word' match.
+          for (i = 0; (i < MAGICSIZE) && (buffer[indexOut++] == magic[i++]););
+          if (i == MAGICSIZE)
+          {
+            // Magic word matches. Now how about the checksum?
+            hi  = buffer[indexOut++];
+            lo  = buffer[indexOut++];
+            chk = buffer[indexOut++];
+            if (chk == (hi ^ lo ^ 0x55))
+            {
+              // Checksum looks valid. Get 16-bit LED count, add 1
+              // (# LEDs is always > 0) and multiply by 3 for R,G,B.
+              bytesRemaining = 3L * (256L * (long)hi + (long)lo + 1L);
+              bytesBuffered -= 3;
+              outPos = 0;
+              memset(leds, 0, NUM_LEDS * sizeof(struct CRGB));
+              mode = MODE_DATA;
+            }
+            else
+              // Checksum didn't match; search resumes after magic word. Rewind.
+              indexOut -= 3;
+          }
+          // else no header match. Resume at first mismatched byte.
+          bytesBuffered -= i;
+        }
+        break;
+      case MODE_DATA:
+        if (bytesRemaining > 0)
+        {
+          if (bytesBuffered > 0)
+          {
+            if (outPos < sizeof(leds))
+              ledsRaw[outPos++] = buffer[indexOut++];
+            bytesBuffered--;
+            bytesRemaining--;
+          }
+        }
+        // If serial buffer is threatening to underrun, start
+        // introducing progressively longer pauses to allow more
+        // data to arrive (up to a point).
+        else
+        {
+          startTime = micros();
+          mode = MODE_HEADER;
+          FastLED.show();
+        }
+    }
+  }
 }
 
 void loop()
 {
-  // Implementation is a simple finite-state machine.
-  // Regardless of mode, check for serial input each time:
-  currentTime = millis();
-  if ((bytesBuffered < 256) && ((c = Serial.read()) >= 0))
-  {
-    buffer[indexIn++] = c;
-    bytesBuffered++;
-    // Reset timeout counters
-    lastByteTime = lastAckTime = currentTime;
-  }
-  else
-  {
-    // No data received. If this persists, send an ACK packet
-    // to host once every second to alert it to our presence.
-    if ((currentTime - lastAckTime) > 1000)
-    {
-      // Send ACK to host and Reset counter
-      Serial.print("Ada\n");
-      lastAckTime = currentTime;
-    }
-    // If no data received for an extended time, turn off all LEDs.
-    if ((currentTime - lastByteTime) > SERIAL_TIMEOUT)
-    {
-      memset(leds, 0, NUM_LEDS * sizeof(struct CRGB));
-      FastLED.show();
-      lastByteTime = currentTime;
-    }
-  }
-
-  switch (mode)
-  {
-    case MODE_HEADER:
-      // In header-seeking mode. Is there enough data to check?
-      if (bytesBuffered >= HEADERSIZE)
-      {
-        // Indeed. Check for a 'magic word' match.
-        for (i = 0; (i < MAGICSIZE) && (buffer[indexOut++] == magic[i++]););
-        if (i == MAGICSIZE)
-        {
-          // Magic word matches. Now how about the checksum?
-          hi  = buffer[indexOut++];
-          lo  = buffer[indexOut++];
-          chk = buffer[indexOut++];
-          if (chk == (hi ^ lo ^ 0x55))
-          {
-            // Checksum looks valid. Get 16-bit LED count, add 1
-            // (# LEDs is always > 0) and multiply by 3 for R,G,B.
-            bytesRemaining = 3L * (256L * (long)hi + (long)lo + 1L);
-            bytesBuffered -= 3;
-            outPos = 0;
-            memset(leds, 0, NUM_LEDS * sizeof(struct CRGB));
-            mode = MODE_DATA;
-          }
-          else
-            // Checksum didn't match; search resumes after magic word. Rewind.
-            indexOut -= 3;
-        }
-        // else no header match. Resume at first mismatched byte.
-        bytesBuffered -= i;
-      }
-      break;
-    case MODE_DATA:
-      if (bytesRemaining > 0)
-      {
-        if (bytesBuffered > 0)
-        {
-          if (outPos < sizeof(leds))
-            ledsRaw[outPos++] = buffer[indexOut++];
-          bytesBuffered--;
-          bytesRemaining--;
-        }
-      }
-      // If serial buffer is threatening to underrun, start
-      // introducing progressively longer pauses to allow more
-      // data to arrive (up to a point).
-      else
-      {
-        startTime = micros();
-        mode = MODE_HEADER;
-        FastLED.show();
-      }
-  }
 }
